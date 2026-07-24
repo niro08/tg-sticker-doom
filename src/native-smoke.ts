@@ -15,7 +15,7 @@ async function main(): Promise<void> {
     wadPath: path.resolve(wadPath),
     framePath: path.resolve("./data/smoke-frame.ppm"),
     workingDirectory: path.resolve("./data/smoke-runtime"),
-    startupTimeoutMs: 20_000,
+    startupTimeoutMs: 10_000,
     onOutput: (stream, text) => {
       if (stream === "stderr") process.stderr.write(text);
     },
@@ -25,13 +25,15 @@ async function main(): Promise<void> {
     await engine.start();
     const initial = await engine.capture();
     const moved = await engine.apply("forward");
-    const tiles = await renderGameGrid(moved);
+    const fired = await engine.apply("fire");
+    const tiles = await renderGameGrid(fired);
 
     console.log(
       JSON.stringify({
         initialSequence: initial.sequence,
         movedSequence: moved.sequence,
-        frame: `${moved.width}x${moved.height}`,
+        firedSequence: fired.sequence,
+        frame: `${fired.width}x${fired.height}`,
         tiles: tiles.length,
         tileBytes: tiles.map((tile) => tile.length),
       }),

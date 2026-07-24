@@ -67,7 +67,7 @@ export function loadConfig(): Config {
     ),
     doomStartupTimeoutMs: positiveInteger(
       "DOOM_STARTUP_TIMEOUT_MS",
-      20_000,
+      10_000,
     ),
   };
 }
