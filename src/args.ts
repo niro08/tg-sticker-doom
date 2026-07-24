@@ -1,7 +1,13 @@
 import { parseArgs } from "node:util";
 
 export interface CliOptions {
-  command: "init" | "status" | "single" | "batch";
+  command:
+    | "init"
+    | "status"
+    | "single"
+    | "batch"
+    | "prepare-game"
+    | "play";
   slot?: number;
   slotCount?: number;
   slots?: number[];
@@ -36,9 +42,13 @@ function optionalNonNegativeInteger(
 
 export function parseCli(argv: string[]): CliOptions {
   const command = argv[0];
-  if (!["init", "status", "single", "batch"].includes(command || "")) {
+  if (
+    !["init", "status", "single", "batch", "prepare-game", "play"].includes(
+      command || "",
+    )
+  ) {
     throw new Error(
-      "Usage: npm run dev -- <init|status|single|batch> [options]",
+      "Usage: npm run dev -- <init|status|single|batch|prepare-game|play> [options]",
     );
   }
 
