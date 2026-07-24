@@ -4,5 +4,9 @@ dist/
 data/
 logs/
 *.log
+*.wad
+*.WAD
 .DS_Store
 .idea/
+native/build/
+native/bin/

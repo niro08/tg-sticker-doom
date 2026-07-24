@@ -2,6 +2,7 @@ import type {
   InputSticker,
   TelegramEnvelope,
   TelegramStickerSet,
+  TelegramUpdate,
   TelegramUser,
 } from "./types.js";
 import { JsonlLogger } from "./logger.js";
@@ -164,5 +165,32 @@ export class TelegramClient {
       filename,
     );
     return this.request<true>("replaceStickerInSet", form);
+  }
+
+  addStickerToSet(
+    userId: number,
+    name: string,
+    input: InputSticker,
+    bytes: Buffer,
+    filename: string,
+  ): Promise<true> {
+    const form = new FormData();
+    form.set("user_id", String(userId));
+    form.set("name", name);
+    form.set("sticker", JSON.stringify(input));
+    form.set(
+      "sticker_file",
+      new Blob([Uint8Array.from(bytes)], { type: "image/webp" }),
+      filename,
+    );
+    return this.request<true>("addStickerToSet", form);
+  }
+
+  getUpdates(offset?: number, timeout = 0): Promise<TelegramUpdate[]> {
+    return this.request<TelegramUpdate[]>("getUpdates", {
+      ...(offset === undefined ? {} : { offset }),
+      timeout,
+      allowed_updates: ["message"],
+    });
   }
 }

@@ -35,6 +35,27 @@ export interface TelegramStickerSet {
   stickers: TelegramSticker[];
 }
 
+export interface TelegramMessage {
+  message_id: number;
+  date: number;
+  chat: {
+    id: number;
+    type: string;
+  };
+  from?: {
+    id: number;
+    is_bot: boolean;
+    first_name: string;
+    username?: string;
+  };
+  sticker?: TelegramSticker;
+}
+
+export interface TelegramUpdate {
+  update_id: number;
+  message?: TelegramMessage;
+}
+
 export interface InputSticker {
   sticker: string;
   format: "static";
