@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 import { loadConfig } from "./config.js";
 import { parseCli } from "./args.js";
+import {
+  CONTROL_DEFINITIONS,
+  renderControlSticker,
+  resolveControlAction,
+  type BoundControl,
+} from "./controls.js";
+import { DoomProcess } from "./doom-process.js";
+import type { GameFrame } from "./game.js";
+import { GRID_SLOT_COUNT, renderGameGrid } from "./grid.js";
 import { renderFrame } from "./image.js";
 import { JsonlLogger } from "./logger.js";
 import {
@@ -14,6 +23,7 @@ import type {
   InputSticker,
   ProbeState,
   TelegramStickerSet,
+  TelegramUpdate,
   TelegramUser,
 } from "./types.js";
 
@@ -24,12 +34,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function inputSticker(attachment: string, slot: number): InputSticker {
+function inputSticker(
+  attachment: string,
+  slot: number,
+  emoji = "🎮",
+  keyword = `probe-slot-${slot}`,
+): InputSticker {
   return {
     sticker: `attach://${attachment}`,
     format: "static",
-    emoji_list: ["🎮"],
-    keywords: [`probe-slot-${slot}`],
+    emoji_list: [emoji],
+    keywords: [keyword],
   };
 }
 
@@ -293,6 +308,274 @@ async function runExperiment(
   return state;
 }
 
+function normalizedEmoji(value: string | undefined): string {
+  return (value ?? "").replaceAll("\ufe0f", "");
+}
+
+async function prepareGamePack(
+  client: TelegramClient,
+  logger: JsonlLogger,
+  config: ReturnType<typeof loadConfig>,
+  bot: TelegramUser,
+  initialState: ProbeState,
+): Promise<ProbeState> {
+  let state = await syncState(client, config, bot, initialState);
+
+  if (state.slots.length < GRID_SLOT_COUNT) {
+    throw new Error(
+      `Game mode requires ${GRID_SLOT_COUNT} screen slots; set has ${state.slots.length}`,
+    );
+  }
+  if (
+    state.slots.length > GRID_SLOT_COUNT + CONTROL_DEFINITIONS.length
+  ) {
+    throw new Error(
+      `Game layout supports exactly ${GRID_SLOT_COUNT + CONTROL_DEFINITIONS.length} slots; set has ${state.slots.length}`,
+    );
+  }
+
+  for (const definition of CONTROL_DEFINITIONS) {
+    const existing = state.slots[definition.slot];
+    if (existing) {
+      if (
+        normalizedEmoji(existing.emoji) !==
+        normalizedEmoji(definition.emoji)
+      ) {
+        throw new Error(
+          `Slot ${definition.slot} already exists but is not the ${definition.action} control`,
+        );
+      }
+      continue;
+    }
+    if (state.slots.length !== definition.slot) {
+      throw new Error(
+        `Cannot append control at slot ${definition.slot}; current size is ${state.slots.length}`,
+      );
+    }
+
+    const attachment = "sticker_file";
+    await client.addStickerToSet(
+      config.ownerUserId,
+      config.stickerSetName,
+      inputSticker(
+        attachment,
+        definition.slot,
+        definition.emoji,
+        `doom-control-${definition.action}`,
+      ),
+      await renderControlSticker(definition),
+      `control-${definition.action}.webp`,
+    );
+    await logger.write({
+      type: "control_added",
+      stickerSetName: config.stickerSetName,
+      slot: definition.slot,
+      action: definition.action,
+    });
+    state = await syncState(client, config, bot, state);
+  }
+
+  return state;
+}
+
+function boundControls(state: ProbeState): BoundControl[] {
+  return CONTROL_DEFINITIONS.map((definition) => {
+    const slot = state.slots[definition.slot];
+    if (!slot) {
+      throw new Error(`Missing control sticker at slot ${definition.slot}`);
+    }
+    return { ...definition, fileUniqueId: slot.fileUniqueId };
+  });
+}
+
+async function publishGameFrame(
+  client: TelegramClient,
+  logger: JsonlLogger,
+  config: ReturnType<typeof loadConfig>,
+  bot: TelegramUser,
+  previous: ProbeState,
+  frame: GameFrame,
+): Promise<ProbeState> {
+  const tiles = await renderGameGrid(frame);
+  const live = await syncState(client, config, bot, previous);
+  validateSlots(
+    Array.from({ length: GRID_SLOT_COUNT }, (_, slot) => slot),
+    live,
+  );
+
+  await logger.write({
+    type: "game_frame_start",
+    sequence: frame.sequence,
+    capturedAt: frame.capturedAt,
+    slotCount: GRID_SLOT_COUNT,
+  });
+
+  for (let slot = 0; slot < GRID_SLOT_COUNT; slot += 1) {
+    const oldSticker = live.slots[slot];
+    const tile = tiles[slot];
+    if (!oldSticker || !tile) throw new Error(`Missing game tile ${slot}`);
+
+    const startedAt = new Date().toISOString();
+    await client.replaceStickerInSet(
+      config.ownerUserId,
+      config.stickerSetName,
+      oldSticker.fileId,
+      inputSticker("replacement", slot, "🎮", `doom-screen-${slot}`),
+      tile,
+      `doom-${String(frame.sequence).padStart(6, "0")}-${slot}.webp`,
+    );
+    await logger.write({
+      type: "game_tile_replaced",
+      sequence: frame.sequence,
+      slot,
+      oldFileUniqueId: oldSticker.fileUniqueId,
+      startedAt,
+      acceptedAt: new Date().toISOString(),
+    });
+  }
+
+  const updated = await syncState(client, config, bot, live);
+  const updatedAt = new Date().toISOString();
+  for (let slot = 0; slot < GRID_SLOT_COUNT; slot += 1) {
+    const stateSlot = updated.slots[slot];
+    if (stateSlot) {
+      stateSlot.frame = frame.sequence;
+      stateSlot.updatedAt = updatedAt;
+    }
+  }
+  updated.nextFrame = Math.max(updated.nextFrame, frame.sequence + 1);
+  await saveState(config.stateFile, updated);
+  await logger.write({
+    type: "game_frame_end",
+    sequence: frame.sequence,
+    publishedAt: updatedAt,
+  });
+  return updated;
+}
+
+async function drainPendingUpdates(
+  client: TelegramClient,
+  logger: JsonlLogger,
+): Promise<number | undefined> {
+  let offset: number | undefined;
+  let dropped = 0;
+
+  while (true) {
+    const updates = await client.getUpdates(offset, 0);
+    if (updates.length === 0) break;
+    dropped += updates.length;
+    offset = updates[updates.length - 1]!.update_id + 1;
+  }
+
+  await logger.write({
+    type: "telegram_backlog_drained",
+    dropped,
+    nextOffset: offset,
+  });
+  return offset;
+}
+
+function actionFromUpdate(
+  update: TelegramUpdate,
+  stickerSetName: string,
+  controls: readonly BoundControl[],
+) {
+  const sticker = update.message?.sticker;
+  if (!sticker || sticker.set_name !== stickerSetName) return null;
+  return resolveControlAction(sticker, controls);
+}
+
+async function runGame(
+  client: TelegramClient,
+  logger: JsonlLogger,
+  config: ReturnType<typeof loadConfig>,
+  bot: TelegramUser,
+  initialState: ProbeState,
+): Promise<void> {
+  if (!config.doomWadPath) {
+    throw new Error("DOOM_WAD_PATH is required for play");
+  }
+
+  let state = await prepareGamePack(
+    client,
+    logger,
+    config,
+    bot,
+    initialState,
+  );
+  const controls = boundControls(state);
+  const engine = new DoomProcess({
+    executablePath: config.doomExecutable,
+    wadPath: config.doomWadPath,
+    framePath: config.doomFrameFile,
+    workingDirectory: config.doomWorkingDirectory,
+    startupTimeoutMs: config.doomStartupTimeoutMs,
+    onOutput: (stream, text) => {
+      const output = text.trim();
+      if (output) console[stream === "stderr" ? "error" : "log"](output);
+    },
+  });
+  let stopping = false;
+  const stop = () => {
+    stopping = true;
+  };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+
+  try {
+    console.log("Starting headless DOOM on E1M1...");
+    await engine.start();
+    state = await publishGameFrame(
+      client,
+      logger,
+      config,
+      bot,
+      state,
+      await engine.capture(),
+    );
+    let offset = await drainPendingUpdates(client, logger);
+    console.log("Game is live. Waiting for control stickers...");
+
+    while (!stopping) {
+      const updates = await client.getUpdates(offset, 5);
+      for (const update of updates) {
+        offset = update.update_id + 1;
+        const action = actionFromUpdate(
+          update,
+          config.stickerSetName,
+          controls,
+        );
+        if (!action) continue;
+
+        await logger.write({
+          type: "game_input",
+          updateId: update.update_id,
+          messageId: update.message?.message_id,
+          chatId: update.message?.chat.id,
+          userId: update.message?.from?.id,
+          action,
+          receivedAt: new Date().toISOString(),
+        });
+        console.log(
+          `${new Date().toISOString()} action=${action} user=${update.message?.from?.id ?? "unknown"}`,
+        );
+        state = await publishGameFrame(
+          client,
+          logger,
+          config,
+          bot,
+          state,
+          await engine.apply(action),
+        );
+      }
+    }
+  } finally {
+    process.removeListener("SIGINT", stop);
+    process.removeListener("SIGTERM", stop);
+    await engine.stop();
+  }
+}
+
 async function main(): Promise<void> {
   const options = parseCli(process.argv.slice(2));
   const config = loadConfig();
@@ -333,6 +616,18 @@ async function main(): Promise<void> {
           2,
         ),
       );
+      return;
+    }
+
+    if (options.command === "prepare-game") {
+      state = await prepareGamePack(client, logger, config, bot, state);
+      console.log(`Game layout ready: ${state.slots.length} slots`);
+      console.log(`Pack: https://t.me/addstickers/${state.stickerSetName}`);
+      return;
+    }
+
+    if (options.command === "play") {
+      await runGame(client, logger, config, bot, state);
       return;
     }
 

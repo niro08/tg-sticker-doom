@@ -10,6 +10,11 @@ export interface Config {
   logFile: string;
   defaultIntervalMs: number;
   defaultSlotDelayMs: number;
+  doomExecutable: string;
+  doomWadPath?: string;
+  doomFrameFile: string;
+  doomWorkingDirectory: string;
+  doomStartupTimeoutMs: number;
 }
 
 function required(name: string): string {
@@ -48,5 +53,21 @@ export function loadConfig(): Config {
     logFile: path.resolve(process.env.LOG_FILE || "./logs/api.jsonl"),
     defaultIntervalMs: positiveInteger("DEFAULT_INTERVAL_MS", 10_000),
     defaultSlotDelayMs: positiveInteger("DEFAULT_SLOT_DELAY_MS", 0),
+    doomExecutable: path.resolve(
+      process.env.DOOM_EXECUTABLE || "./native/bin/doomgeneric-headless",
+    ),
+    doomWadPath: process.env.DOOM_WAD_PATH?.trim()
+      ? path.resolve(process.env.DOOM_WAD_PATH)
+      : undefined,
+    doomFrameFile: path.resolve(
+      process.env.DOOM_FRAME_FILE || "./data/doom-frame.ppm",
+    ),
+    doomWorkingDirectory: path.resolve(
+      process.env.DOOM_WORKING_DIRECTORY || "./data/doom-runtime",
+    ),
+    doomStartupTimeoutMs: positiveInteger(
+      "DOOM_STARTUP_TIMEOUT_MS",
+      20_000,
+    ),
   };
 }

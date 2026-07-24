@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:native": "make -C native",
+    "smoke:native": "tsx src/native-smoke.ts",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
     "test": "npm run build && node --test dist/*.test.js",
