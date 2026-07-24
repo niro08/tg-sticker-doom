@@ -9,7 +9,8 @@ export interface ControlDefinition {
   slot: number;
   emoji: string;
   label: string;
-  ticks: number;
+  holdTicks: number;
+  captureTick?: number;
 }
 
 export interface BoundControl extends ControlDefinition {
@@ -22,35 +23,36 @@ export const CONTROL_DEFINITIONS: readonly ControlDefinition[] = [
     slot: FIRST_CONTROL_SLOT,
     emoji: "⬅️",
     label: "LEFT",
-    ticks: 5,
+    holdTicks: 14,
   },
   {
     action: "turn_right",
     slot: FIRST_CONTROL_SLOT + 1,
     emoji: "➡️",
     label: "RIGHT",
-    ticks: 5,
+    holdTicks: 14,
   },
   {
     action: "forward",
     slot: FIRST_CONTROL_SLOT + 2,
     emoji: "⬆️",
     label: "GO",
-    ticks: 8,
+    holdTicks: 20,
   },
   {
     action: "fire",
     slot: FIRST_CONTROL_SLOT + 3,
     emoji: "🔥",
     label: "FIRE",
-    ticks: 2,
+    holdTicks: 8,
+    captureTick: 8,
   },
   {
     action: "use",
     slot: FIRST_CONTROL_SLOT + 4,
     emoji: "🚪",
     label: "USE",
-    ticks: 2,
+    holdTicks: 2,
   },
 ];
 

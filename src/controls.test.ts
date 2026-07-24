@@ -7,6 +7,19 @@ import {
   resolveControlAction,
 } from "./controls.js";
 
+test("control timings make movement visible and capture fire while held", () => {
+  const controls = Object.fromEntries(
+    CONTROL_DEFINITIONS.map((control) => [control.action, control]),
+  );
+
+  assert.equal(controls.turn_left?.holdTicks, 14);
+  assert.equal(controls.turn_right?.holdTicks, 14);
+  assert.equal(controls.forward?.holdTicks, 20);
+  assert.equal(controls.fire?.holdTicks, 8);
+  assert.equal(controls.fire?.captureTick, 8);
+  assert.equal(controls.use?.holdTicks, 2);
+});
+
 test("resolveControlAction prefers the stable file_unique_id", () => {
   const controls = CONTROL_DEFINITIONS.map((control) => ({
     ...control,

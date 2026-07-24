@@ -1,5 +1,6 @@
 #include "doomgeneric.h"
 #include "doomkeys.h"
+#include "d_loop.h"
 #include "m_argv.h"
 
 #include <errno.h>
@@ -14,8 +15,8 @@
 
 #define KEY_QUEUE_SIZE 64
 #define COMMAND_BUFFER_SIZE 512
-#define DEFAULT_ACTION_FRAMES 5
-#define INITIAL_CAPTURE_FRAMES 40
+#define DEFAULT_ACTION_TICKS 5
+#define INITIAL_CAPTURE_FRAMES 8
 
 static unsigned short key_queue[KEY_QUEUE_SIZE];
 static unsigned int key_write_index = 0;
@@ -27,7 +28,10 @@ static size_t command_length = 0;
 static unsigned long long frame_sequence = 0;
 
 static unsigned char active_key = 0;
-static int action_frames_remaining = 0;
+static int action_start_gametic = 0;
+static int action_hold_ticks = 0;
+static int action_capture_tick = 0;
+static int action_capture_written = 0;
 static int capture_countdown = INITIAL_CAPTURE_FRAMES;
 
 static void queue_key(int pressed, unsigned char key)
@@ -140,7 +144,8 @@ static void write_frame(void)
 static void handle_command(char *line)
 {
     char action[32];
-    int frames = DEFAULT_ACTION_FRAMES;
+    int hold_ticks = DEFAULT_ACTION_TICKS;
+    int capture_tick = 0;
     unsigned char key;
 
     if (strcmp(line, "capture") == 0)
@@ -153,7 +158,8 @@ static void handle_command(char *line)
         exit(0);
     }
 
-    if (sscanf(line, "%31s %d", action, &frames) < 1)
+    if (sscanf(line, "%31s %d %d", action, &hold_ticks,
+               &capture_tick) < 1)
     {
         return;
     }
@@ -170,13 +176,24 @@ static void handle_command(char *line)
                 action);
         return;
     }
-    if (frames < 1)
+    if (hold_ticks < 1)
     {
-        frames = 1;
+        hold_ticks = 1;
+    }
+    if (capture_tick < 0)
+    {
+        capture_tick = 0;
+    }
+    if (capture_tick > hold_ticks)
+    {
+        capture_tick = hold_ticks;
     }
 
     active_key = key;
-    action_frames_remaining = frames;
+    action_start_gametic = gametic;
+    action_hold_ticks = hold_ticks;
+    action_capture_tick = capture_tick;
+    action_capture_written = 0;
     capture_countdown = -1;
     queue_key(1, active_key);
 }
@@ -249,16 +266,33 @@ void DG_Init(void)
 
 void DG_DrawFrame(void)
 {
+    int elapsed_ticks;
+
     process_input();
 
     if (active_key != 0)
     {
-        action_frames_remaining -= 1;
-        if (action_frames_remaining <= 0)
+        elapsed_ticks = gametic - action_start_gametic;
+        if (elapsed_ticks < 0)
+        {
+            elapsed_ticks = 0;
+        }
+
+        if (!action_capture_written && action_capture_tick > 0
+            && elapsed_ticks >= action_capture_tick)
+        {
+            write_frame();
+            action_capture_written = 1;
+        }
+
+        if (elapsed_ticks >= action_hold_ticks)
         {
             queue_key(0, active_key);
             active_key = 0;
-            capture_countdown = 1;
+            if (action_capture_tick == 0)
+            {
+                capture_countdown = 1;
+            }
         }
     }
 

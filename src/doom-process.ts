@@ -132,7 +132,9 @@ export class DoomProcess implements GameEngine {
     return this.serialize(async () => {
       const child = this.requireChild();
       const before = this.lastSequence;
-      child.stdin.write(`${action} ${definition.ticks}\n`);
+      child.stdin.write(
+        `${action} ${definition.holdTicks} ${definition.captureTick ?? 0}\n`,
+      );
       return this.waitForFrame(
         before,
         this.options.actionTimeoutMs ?? 10_000,
