@@ -1,0 +1,26 @@
+{
+  "name": "tg-sticker-doom",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A globally shared DOOM experiment rendered through a Telegram sticker set.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
+    "test": "npm run build && node --test dist/*.test.js",
+    "check": "npm run build && npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}
