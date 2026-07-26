@@ -1,6 +1,8 @@
 import type {
   InputSticker,
   TelegramEnvelope,
+  TelegramFile,
+  TelegramMessage,
   TelegramStickerSet,
   TelegramUpdate,
   TelegramUser,
@@ -126,11 +128,13 @@ export class TelegramClient {
     name: string,
     title: string,
     stickers: Array<{ input: InputSticker; bytes: Buffer; filename: string }>,
+    stickerType: "regular" | "custom_emoji" = "regular",
   ): Promise<true> {
     const form = new FormData();
     form.set("user_id", String(userId));
     form.set("name", name);
     form.set("title", title);
+    form.set("sticker_type", stickerType);
     form.set(
       "stickers",
       JSON.stringify(stickers.map(({ input }) => input)),
@@ -167,6 +171,36 @@ export class TelegramClient {
     return this.request<true>("replaceStickerInSet", form);
   }
 
+  uploadStickerFile(
+    userId: number,
+    bytes: Buffer,
+    filename: string,
+  ): Promise<TelegramFile> {
+    const form = new FormData();
+    form.set("user_id", String(userId));
+    form.set("sticker_format", "static");
+    form.set(
+      "sticker",
+      new Blob([Uint8Array.from(bytes)], { type: "image/webp" }),
+      filename,
+    );
+    return this.request<TelegramFile>("uploadStickerFile", form);
+  }
+
+  replaceStickerInSetByFileId(
+    userId: number,
+    name: string,
+    oldSticker: string,
+    input: InputSticker,
+  ): Promise<true> {
+    return this.request<true>("replaceStickerInSet", {
+      user_id: userId,
+      name,
+      old_sticker: oldSticker,
+      sticker: input,
+    });
+  }
+
   addStickerToSet(
     userId: number,
     name: string,
@@ -184,6 +218,42 @@ export class TelegramClient {
       filename,
     );
     return this.request<true>("addStickerToSet", form);
+  }
+
+  sendCustomEmojiScreen(
+    chatId: number,
+    html: string,
+  ): Promise<TelegramMessage> {
+    return this.request<TelegramMessage>("sendMessage", {
+      chat_id: chatId,
+      text: html,
+      parse_mode: "HTML",
+      disable_notification: true,
+    });
+  }
+
+  editCustomEmojiScreen(
+    chatId: number,
+    messageId: number,
+    html: string,
+  ): Promise<TelegramMessage | true> {
+    return this.request<TelegramMessage | true>("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text: html,
+      parse_mode: "HTML",
+    });
+  }
+
+  deleteMessage(chatId: number, messageId: number): Promise<true> {
+    return this.request<true>("deleteMessage", {
+      chat_id: chatId,
+      message_id: messageId,
+    });
+  }
+
+  deleteStickerFromSet(sticker: string): Promise<true> {
+    return this.request<true>("deleteStickerFromSet", { sticker });
   }
 
   getUpdates(offset?: number, timeout = 0): Promise<TelegramUpdate[]> {

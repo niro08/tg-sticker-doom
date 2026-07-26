@@ -3,9 +3,20 @@ import test from "node:test";
 import sharp from "sharp";
 import {
   CONTROL_DEFINITIONS,
+  FIRST_CONTROL_SLOT,
+  LEGACY_FIRST_CONTROL_SLOT,
   renderControlSticker,
   resolveControlAction,
 } from "./controls.js";
+
+test("the compact pack keeps only five controls", () => {
+  assert.equal(FIRST_CONTROL_SLOT, 0);
+  assert.equal(LEGACY_FIRST_CONTROL_SLOT, 15);
+  assert.deepEqual(
+    CONTROL_DEFINITIONS.map((control) => control.slot),
+    [0, 1, 2, 3, 4],
+  );
+});
 
 test("control timings make movement visible and capture fire while held", () => {
   const controls = Object.fromEntries(

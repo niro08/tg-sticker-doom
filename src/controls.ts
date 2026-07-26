@@ -2,7 +2,8 @@ import sharp from "sharp";
 import type { GameAction } from "./game.js";
 import type { TelegramSticker } from "./types.js";
 
-export const FIRST_CONTROL_SLOT = 15;
+export const FIRST_CONTROL_SLOT = 0;
+export const LEGACY_FIRST_CONTROL_SLOT = 15;
 
 export interface ControlDefinition {
   action: GameAction;

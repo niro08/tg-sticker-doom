@@ -42,6 +42,7 @@ export function stateFromSet(
     botId: bot.id,
     botUsername: bot.username || "",
     nextFrame: previous?.nextFrame ?? 1,
+    screenMessages: previous?.screenMessages ?? {},
     slots: set.stickers.map((sticker, position) => {
       const old = previous?.slots.find((slot) => slot.position === position);
       return {
@@ -64,6 +65,10 @@ export class StateLock {
 
   async acquire(): Promise<void> {
     await mkdir(path.dirname(this.lockPath), { recursive: true });
+    await this.acquireOnce(true);
+  }
+
+  private async acquireOnce(allowStaleRecovery: boolean): Promise<void> {
     try {
       const handle = await open(this.lockPath, "wx");
       await handle.writeFile(
@@ -73,11 +78,50 @@ export class StateLock {
       this.acquired = true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        if (
+          allowStaleRecovery &&
+          (await this.removeIfOwnedByDeadProcess())
+        ) {
+          await this.acquireOnce(false);
+          return;
+        }
         throw new Error(
           `Another probe may be running. Lock exists: ${this.lockPath}`,
         );
       }
       throw error;
+    }
+  }
+
+  private async removeIfOwnedByDeadProcess(): Promise<boolean> {
+    try {
+      const parsed = JSON.parse(
+        await readFile(this.lockPath, "utf8"),
+      ) as { pid?: unknown };
+      if (
+        typeof parsed.pid !== "number" ||
+        !Number.isSafeInteger(parsed.pid) ||
+        parsed.pid <= 0
+      ) {
+        return false;
+      }
+
+      try {
+        process.kill(parsed.pid, 0);
+        return false;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+          return false;
+        }
+      }
+
+      await unlink(this.lockPath);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return true;
+      }
+      return false;
     }
   }
 
