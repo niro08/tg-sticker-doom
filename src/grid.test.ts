@@ -2,10 +2,30 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import sharp from "sharp";
 import {
+  CUSTOM_EMOJI_SIZE,
+  CUSTOM_EMOJI_SLOT_COUNT,
   GRID_SLOT_COUNT,
+  renderCustomEmojiGrid,
   renderGameGrid,
   STICKER_SIZE,
 } from "./grid.js";
+
+test("renderCustomEmojiGrid returns six 100x100 WEBP tiles", async () => {
+  const tiles = await renderCustomEmojiGrid({
+    pixels: Buffer.alloc(320 * 200 * 3, 96),
+    width: 320,
+    height: 200,
+    channels: 3,
+  });
+
+  assert.equal(tiles.length, CUSTOM_EMOJI_SLOT_COUNT);
+  for (const tile of tiles) {
+    const metadata = await sharp(tile).metadata();
+    assert.equal(metadata.format, "webp");
+    assert.equal(metadata.width, CUSTOM_EMOJI_SIZE);
+    assert.equal(metadata.height, CUSTOM_EMOJI_SIZE);
+  }
+});
 
 test("renderGameGrid returns fifteen ordered 512x512 WEBP tiles", async () => {
   const width = 320;

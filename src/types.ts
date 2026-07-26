@@ -16,6 +16,12 @@ export interface TelegramUser {
   username?: string;
 }
 
+export interface TelegramFile {
+  file_id: string;
+  file_unique_id: string;
+  file_size?: number;
+}
+
 export interface TelegramSticker {
   file_id: string;
   file_unique_id: string;
@@ -26,6 +32,7 @@ export interface TelegramSticker {
   is_video: boolean;
   emoji?: string;
   set_name?: string;
+  custom_emoji_id?: string;
 }
 
 export interface TelegramStickerSet {
@@ -58,7 +65,7 @@ export interface TelegramUpdate {
 
 export interface InputSticker {
   sticker: string;
-  format: "static";
+  format: "static" | "animated" | "video";
   emoji_list: string[];
   keywords?: string[];
 }
@@ -80,5 +87,13 @@ export interface ProbeState {
   botUsername: string;
   nextFrame: number;
   slots: SlotState[];
+  screenMessages?: Record<
+    string,
+    {
+      chatId: number;
+      messageId: number;
+      updatedAt: string;
+    }
+  >;
   syncedAt: string;
 }

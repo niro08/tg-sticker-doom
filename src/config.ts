@@ -6,6 +6,8 @@ export interface Config {
   ownerUserId: number;
   stickerSetName: string;
   stickerSetTitle: string;
+  customEmojiSetName?: string;
+  customEmojiSetTitle: string;
   stateFile: string;
   logFile: string;
   defaultIntervalMs: number;
@@ -15,6 +17,8 @@ export interface Config {
   doomFrameFile: string;
   doomWorkingDirectory: string;
   doomStartupTimeoutMs: number;
+  autoUpdateIntervalMs: number;
+  deleteControlMessages: boolean;
 }
 
 function required(name: string): string {
@@ -37,6 +41,14 @@ function positiveInteger(name: string, fallback?: number): number {
   return value;
 }
 
+function booleanValue(name: string, fallback: boolean): boolean {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["1", "true", "yes", "on"].includes(raw)) return true;
+  if (["0", "false", "no", "off"].includes(raw)) return false;
+  throw new Error(`${name} must be true or false`);
+}
+
 export function loadConfig(): Config {
   const ownerUserId = Number(required("OWNER_USER_ID"));
   if (!Number.isSafeInteger(ownerUserId) || ownerUserId <= 0) {
@@ -49,6 +61,10 @@ export function loadConfig(): Config {
     stickerSetName: required("STICKER_SET_NAME"),
     stickerSetTitle:
       process.env.STICKER_SET_TITLE?.trim() || "Sticker Refresh Probe",
+    customEmojiSetName:
+      process.env.CUSTOM_EMOJI_SET_NAME?.trim() || undefined,
+    customEmojiSetTitle:
+      process.env.CUSTOM_EMOJI_SET_TITLE?.trim() || "DOOM Emoji Screen",
     stateFile: path.resolve(process.env.STATE_FILE || "./data/state.json"),
     logFile: path.resolve(process.env.LOG_FILE || "./logs/api.jsonl"),
     defaultIntervalMs: positiveInteger("DEFAULT_INTERVAL_MS", 10_000),
@@ -69,5 +85,7 @@ export function loadConfig(): Config {
       "DOOM_STARTUP_TIMEOUT_MS",
       10_000,
     ),
+    autoUpdateIntervalMs: positiveInteger("AUTO_UPDATE_INTERVAL_MS", 3_000),
+    deleteControlMessages: booleanValue("DELETE_CONTROL_MESSAGES", true),
   };
 }
