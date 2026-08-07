@@ -383,7 +383,8 @@ release directory so the `current` symlink can be switched back.
 ## Limitations
 
 - All users share one game state and can overwrite each other's intentions.
-- The six custom emoji files and replacements run concurrently. The worker
+- The six custom emoji files upload concurrently, then their replacements run
+  sequentially to avoid a burst of `replaceStickerInSet` calls. The worker
   verifies the resulting slot order before sending the chat message.
 - A requested 3-second refresh is bounded by Telegram sticker replacement
   latency; if publishing takes longer, the next cycle starts as soon as the
@@ -395,8 +396,9 @@ release directory so the `current` symlink can be switched back.
   it must still be checked on Android and Desktop after the iOS test.
 - Telegram cache invalidation for the original regular pack remains
   client-dependent and is not used for the live chat screen.
-- There is no automatic retry policy for rate limits; errors and `retry_after`
-  are recorded as experimental data.
+- Telegram `429` responses keep the worker alive. It waits for `retry_after`
+  when provided, otherwise uses exponential backoff capped at 60 seconds, logs
+  the scheduled retry, and retries the same API call.
 - The worker uses long polling rather than a webhook.
 - Only one `play` worker can safely use a bot and sticker pack at a time.
 - A process restart resets the game to E1M1.

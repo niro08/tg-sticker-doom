@@ -9,6 +9,15 @@ import type {
 } from "./types.js";
 import { JsonlLogger } from "./logger.js";
 
+const DEFAULT_RATE_LIMIT_BACKOFF_MS = 1_000;
+const MAX_RATE_LIMIT_BACKOFF_MS = 60_000;
+
+type Sleep = (ms: number) => Promise<void>;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class TelegramApiError extends Error {
   constructor(
     public readonly method: string,
@@ -21,17 +30,67 @@ export class TelegramApiError extends Error {
   }
 }
 
+export function rateLimitRetryDelayMs(
+  error: TelegramApiError,
+  attempt: number,
+): number {
+  const retryAfterSeconds = error.parameters?.retry_after;
+  if (
+    retryAfterSeconds !== undefined &&
+    Number.isFinite(retryAfterSeconds) &&
+    retryAfterSeconds > 0
+  ) {
+    return Math.ceil(retryAfterSeconds * 1_000);
+  }
+
+  const exponent = Math.max(0, Math.min(attempt - 1, 30));
+  return Math.min(
+    DEFAULT_RATE_LIMIT_BACKOFF_MS * 2 ** exponent,
+    MAX_RATE_LIMIT_BACKOFF_MS,
+  );
+}
+
 export class TelegramClient {
   private readonly baseUrl: string;
 
   constructor(
     token: string,
     private readonly logger: JsonlLogger,
+    private readonly wait: Sleep = sleep,
   ) {
     this.baseUrl = `https://api.telegram.org/bot${token}`;
   }
 
   private async request<T>(
+    method: string,
+    body?: Record<string, unknown> | FormData,
+  ): Promise<T> {
+    let rateLimitAttempt = 0;
+
+    while (true) {
+      try {
+        return await this.requestOnce<T>(method, body);
+      } catch (error) {
+        if (!(error instanceof TelegramApiError) || error.errorCode !== 429) {
+          throw error;
+        }
+
+        rateLimitAttempt += 1;
+        const delayMs = rateLimitRetryDelayMs(error, rateLimitAttempt);
+        await this.logger.write({
+          type: "api_rate_limit_retry",
+          method,
+          attempt: rateLimitAttempt,
+          delayMs,
+          retryAfterSeconds: error.parameters?.retry_after,
+          retryAt: new Date(Date.now() + delayMs).toISOString(),
+        });
+        await this.wait(delayMs);
+      }
+    }
+  }
+
+  private async requestOnce<T>(
     method: string,
     body?: Record<string, unknown> | FormData,
   ): Promise<T> {
