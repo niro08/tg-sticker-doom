@@ -536,31 +536,29 @@ async function publishCustomEmojiFrame(
     const current = live;
     const currentScreen = customEmojiScreenStickers(current);
 
-    await Promise.all(
-      Array.from({ length: CUSTOM_EMOJI_SLOT_COUNT }, async (_, slot) => {
-        const oldSticker = currentScreen[slot];
-        const file = uploaded[slot];
-        if (!oldSticker || !file) {
-          throw new Error(`Missing custom emoji tile ${slot}`);
-        }
+    for (let slot = 0; slot < CUSTOM_EMOJI_SLOT_COUNT; slot += 1) {
+      const oldSticker = currentScreen[slot];
+      const file = uploaded[slot];
+      if (!oldSticker || !file) {
+        throw new Error(`Missing custom emoji tile ${slot}`);
+      }
 
-        const startedAt = new Date().toISOString();
-        await client.replaceStickerInSetByFileId(
-          config.ownerUserId,
-          setName,
-          oldSticker.file_id,
-          uploadedInputSticker(file.file_id, slot),
-        );
-        await logger.write({
-          type: "game_emoji_tile_replaced",
-          sequence: frame.sequence,
-          slot,
-          oldFileUniqueId: oldSticker.file_unique_id,
-          startedAt,
-          acceptedAt: new Date().toISOString(),
-        });
-      }),
-    );
+      const startedAt = new Date().toISOString();
+      await client.replaceStickerInSetByFileId(
+        config.ownerUserId,
+        setName,
+        oldSticker.file_id,
+        uploadedInputSticker(file.file_id, slot),
+      );
+      await logger.write({
+        type: "game_emoji_tile_replaced",
+        sequence: frame.sequence,
+        slot,
+        oldFileUniqueId: oldSticker.file_unique_id,
+        startedAt,
+        acceptedAt: new Date().toISOString(),
+      });
+    }
   }
 
   live = await client.getStickerSet(setName);
